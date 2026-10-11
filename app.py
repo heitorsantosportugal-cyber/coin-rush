@@ -644,7 +644,7 @@ elif page == "God Mode":
             "Confirmo que quero adicionar esta quantidade."
         )
 
-        if st.button("💸 ADICIONAR MOEDAS", type="primary):
+        if st.button("💸 ADICIONAR MOEDAS", type="primary"):
             if confirmar:
                 st.session_state.coins += quantidade
                 st.session_state.total_earned += quantidade
