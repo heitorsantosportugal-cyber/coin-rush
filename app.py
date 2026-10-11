@@ -182,21 +182,50 @@ with st.sidebar:
 
     st.divider()
 
-    new_name = st.text_input(
-        "Nome do jogador",
-        value=st.session_state.player_name,
-        max_chars=20
-    ).strip()
+    
+current_name = st.session_state.player_name
 
-    if new_name:
+new_name = st.text_input(
+    "Nome do jogador",
+    value=current_name,
+    max_chars=20
+).strip()
+
+if new_name and new_name != current_name:
+    if db is not None and st.session_state.loaded_player == current_name:
+        try:
+            existing = (
+                db.table("leaderboard")
+                .select("player_name")
+                .eq("player_name", new_name)
+                .limit(1)
+                .execute()
+            )
+
+            if existing.data:
+                st.warning(
+                    "Esse nome já pertence a um jogador. "
+                    "Escolhe outro nome."
+                )
+            else:
+                db.table("leaderboard").update({
+                    "player_name": new_name,
+                    "coins": int(st.session_state.coins),
+                    "updated_at": datetime.now(
+                        timezone.utc
+                    ).isoformat(),
+                }).eq(
+                    "player_name", current_name
+                ).execute()
+
+                st.session_state.player_name = new_name
+                st.session_state.loaded_player = new_name
+
+        except Exception as e:
+            st.error(f"Erro ao alterar o nome: {e}")
+    else:
         st.session_state.player_name = new_name
 
-    if (
-        st.session_state.player_name
-        and st.session_state.loaded_player
-        != st.session_state.player_name
-    ):
-        load_player(st.session_state.player_name)
 
     st.metric("Saldo", f"{st.session_state.coins:,.1f} 🪙")
 
