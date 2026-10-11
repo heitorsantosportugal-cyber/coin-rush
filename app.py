@@ -1,6 +1,9 @@
 
+
 import streamlit as st
 import time
+from datetime import datetime, timezone
+from supabase import create_client
 
 st.set_page_config(
     page_title="Coin Rush",
@@ -20,7 +23,7 @@ st.markdown("""
     background: #151529;
     border-right: 1px solid #39345c;
 }
-h1, h2, h3, p, label {
+h1, h2, h3, p {
     color: white;
 }
 div.stButton > button {
@@ -42,7 +45,7 @@ div.st-key-coin button {
     min-height: 190px !important;
     border-radius: 50% !important;
     padding: 0 !important;
-    margin: 0 auto !important;
+    margin: auto !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -68,6 +71,23 @@ div.st-key-coin button:active {
 </style>
 """, unsafe_allow_html=True)
 
+
+# ---------- SUPABASE ----------
+@st.cache_resource
+def get_supabase():
+    return create_client(
+        st.secrets["SUPABASE_URL"],
+        st.secrets["SUPABASE_KEY"]
+    )
+
+try:
+    db = get_supabase()
+    db_error = None
+except Exception as e:
+    db = None
+    db_error = str(e)
+
+
 # ---------- GAME DATA ----------
 defaults = {
     "coins": 0.0,
@@ -82,11 +102,72 @@ defaults = {
     "last_time": time.time(),
     "player_name": "Jogador",
     "total_clicks": 0,
+    "loaded_player": "",
+    "last_save": 0.0,
 }
 
 for key, value in defaults.items():
     if key not in st.session_state:
         st.session_state[key] = value
+
+
+# ---------- DATABASE FUNCTIONS ----------
+def load_player(name):
+    if db is None or not name:
+        return
+
+    try:
+        result = (
+            db.table("leaderboard")
+            .select("coins")
+            .eq("player_name", name)
+            .limit(1)
+            .execute()
+        )
+
+        if result.data:
+            saved_coins = result.data[0]["coins"]
+            st.session_state.coins = max(
+                st.session_state.coins,
+                float(saved_coins)
+            )
+
+        st.session_state.loaded_player = name
+
+    except Exception as e:
+        st.session_state.db_message = (
+            f"Não foi possível carregar o jogador: {e}"
+        )
+
+
+def save_score():
+    if db is None:
+        return
+
+    name = st.session_state.player_name.strip()
+    if not name:
+        return
+
+    try:
+        db.table("leaderboard").upsert(
+            {
+                "player_name": name,
+                "coins": int(st.session_state.coins),
+                "updated_at": datetime.now(
+                    timezone.utc
+                ).isoformat(),
+            },
+            on_conflict="player_name"
+        ).execute()
+
+        st.session_state.last_save = time.time()
+        st.session_state.db_message = "Pontuação sincronizada!"
+
+    except Exception as e:
+        st.session_state.db_message = (
+            f"Erro ao guardar pontuação: {e}"
+        )
+
 
 # ---------- SIDEBAR ----------
 with st.sidebar:
@@ -100,91 +181,126 @@ with st.sidebar:
     )
 
     st.divider()
-    st.metric("Saldo", f"{st.session_state.coins:,.1f} 🪙")
-    st.metric("Ganhos por clique",
-              f"{st.session_state.click_power * st.session_state.click_multiplier} 🪙")
-    st.metric("Ganhos automáticos", f"{st.session_state.cps} CPS")
 
-    st.divider()
-    st.session_state.player_name = st.text_input(
+    new_name = st.text_input(
         "Nome do jogador",
         value=st.session_state.player_name,
         max_chars=20
-    ).strip() or "Jogador"
+    ).strip()
 
-# ---------- UPGRADE HELPERS ----------
-def buy_upgrade(cost_key, price_multiplier, apply_upgrade):
-    cost = st.session_state[cost_key]
+    if new_name:
+        st.session_state.player_name = new_name
 
-    if st.session_state.coins >= cost:
-        st.session_state.coins -= cost
-        apply_upgrade()
-        st.session_state[cost_key] = int(cost * price_multiplier)
-        st.toast("Melhoria comprada! 🚀")
-    else:
-        st.warning("Ainda não tens moedas suficientes!")
+    if (
+        st.session_state.player_name
+        and st.session_state.loaded_player
+        != st.session_state.player_name
+    ):
+        load_player(st.session_state.player_name)
 
-def buy_normal():
-    buy_upgrade(
-        "normal_cost", 1.6,
-        lambda: setattr(
-            st.session_state, "click_power",
-            st.session_state.click_power + 1
-        )
-    )
+    st.metric("Saldo", f"{st.session_state.coins:,.1f} 🪙")
 
-def buy_fast():
-    buy_upgrade(
-        "fast_cost", 1.8,
-        lambda: setattr(
-            st.session_state, "click_multiplier",
-            st.session_state.click_multiplier + 1
-        )
-    )
-
-def buy_super():
-    buy_upgrade(
-        "super_cost", 2.0,
-        lambda: setattr(
-            st.session_state, "super_level",
-            st.session_state.super_level + 1
-        )
-    )
-    # O Super Click também aumenta o poder do clique.
-    # O efeito é aplicado na função de compra abaixo.
-
-def buy_cps():
-    buy_upgrade(
-        "cps_cost", 1.7,
-        lambda: setattr(
-            st.session_state, "cps",
-            st.session_state.cps + 1
-        )
-    )
-
-# ---------- MAIN CONTENT ----------
-@st.fragment(run_every=1)
-def show_page():
-    # Atualizar os ganhos automáticos com o tempo.
-    now = time.time()
-    elapsed = min(now - st.session_state.last_time, 10)
-    st.session_state.coins += st.session_state.cps * elapsed
-    st.session_state.last_time = now
-
-    # Poder final do clique.
     click_value = (
         st.session_state.click_power
         * st.session_state.click_multiplier
         * (1 + 5 * st.session_state.super_level)
     )
 
+    st.metric("Ganhos por clique", f"{click_value} 🪙")
+    st.metric("Ganhos automáticos", f"{st.session_state.cps} CPS")
+
+    if db is None:
+        st.warning("Base de dados não ligada. Verifica os Secrets.")
+
+
+# ---------- UPGRADE FUNCTIONS ----------
+def buy_upgrade(cost_key, multiplier, apply_upgrade):
+    price = st.session_state[cost_key]
+
+    if st.session_state.coins < price:
+        st.warning("Ainda não tens moedas suficientes!")
+        return
+
+    st.session_state.coins -= price
+    apply_upgrade()
+    st.session_state[cost_key] = int(price * multiplier)
+
+    save_score()
+    st.toast("Melhoria comprada! 🚀")
+
+
+def buy_normal():
+    buy_upgrade(
+        "normal_cost",
+        1.6,
+        lambda: setattr(
+            st.session_state,
+            "click_power",
+            st.session_state.click_power + 1
+        )
+    )
+
+
+def buy_fast():
+    buy_upgrade(
+        "fast_cost",
+        1.8,
+        lambda: setattr(
+            st.session_state,
+            "click_multiplier",
+            st.session_state.click_multiplier + 1
+        )
+    )
+
+
+def buy_super():
+    buy_upgrade(
+        "super_cost",
+        2.0,
+        lambda: setattr(
+            st.session_state,
+            "super_level",
+            st.session_state.super_level + 1
+        )
+    )
+
+
+def buy_cps():
+    buy_upgrade(
+        "cps_cost",
+        1.7,
+        lambda: setattr(
+            st.session_state,
+            "cps",
+            st.session_state.cps + 1
+        )
+    )
+
+
+# ---------- MAIN GAME ----------
+@st.fragment(run_every=1)
+def show_page():
+    now = time.time()
+    elapsed = min(now - st.session_state.last_time, 10)
+
+    st.session_state.coins += st.session_state.cps * elapsed
+    st.session_state.last_time = now
+
+    click_value = (
+        st.session_state.click_power
+        * st.session_state.click_multiplier
+        * (1 + 5 * st.session_state.super_level)
+    )
+
+    # Guardar periodicamente os ganhos automáticos.
+    if now - st.session_state.last_save >= 10:
+        save_score()
+
     if page == "🎮 Jogar":
         st.title("🪙 COIN RUSH")
         st.caption("A tua jornada para te tornares o maior colecionador!")
 
         st.write("")
-        st.write("")
-
         left, center, right = st.columns([1, 2, 1])
 
         with center:
@@ -193,6 +309,7 @@ def show_page():
                 f"font-size:38px'>{st.session_state.coins:,.1f} 🪙</h1>",
                 unsafe_allow_html=True
             )
+
             st.markdown(
                 f"<p style='text-align:center'>"
                 f"+{click_value} moedas por clique</p>",
@@ -200,138 +317,139 @@ def show_page():
             )
 
             _, coin_col, _ = st.columns([0.5, 2, 0.5])
+
             with coin_col:
                 if st.button("🪙", key="coin"):
                     st.session_state.coins += click_value
                     st.session_state.total_clicks += 1
+                    save_score()
 
             st.markdown(
-                "<p class='small-note'>Clica na moeda para ganhar moedas!</p>",
+                "<p class='small-note'>"
+                "Clica na moeda para ganhar moedas!</p>",
                 unsafe_allow_html=True
             )
 
-        st.write("")
         st.divider()
-
         a, b, c = st.columns(3)
         a.metric("👆 Poder base", st.session_state.click_power)
         b.metric("⚡ Multiplicador", f"x{st.session_state.click_multiplier}")
-        c.metric("🤖 Moedas por segundo", st.session_state.cps)
+        c.metric("🤖 CPS", st.session_state.cps)
 
     elif page == "🛒 Melhorias":
         st.title("🛒 Loja de Melhorias")
-        st.caption("Compra melhorias para ganhares moedas cada vez mais depressa.")
+        st.caption("Investe as tuas moedas para ganhares cada vez mais.")
         st.divider()
 
-        # Click Normal
-        with st.container(border=True):
-            left, middle, right = st.columns([3, 2, 2])
-            with left:
-                st.subheader("👆 Click Normal")
-                st.caption("Aumenta em +1 o poder base de cada clique.")
-                st.write(f"Nível atual: {st.session_state.click_power}")
-            with middle:
-                st.write("Preço")
-                st.markdown(f"### {st.session_state.normal_cost} 🪙")
-            with right:
-                st.write("")
-                st.button(
-                    "Comprar",
-                    key="buy_normal",
-                    use_container_width=True,
-                    on_click=buy_normal
-                )
+        upgrades = [
+            (
+                "👆 Click Normal",
+                "Aumenta em +1 o poder base de cada clique.",
+                "Nível",
+                "click_power",
+                "normal_cost",
+                buy_normal,
+            ),
+            (
+                "⚡ Click Rápido",
+                "Aumenta o multiplicador dos teus cliques.",
+                "Multiplicador",
+                "click_multiplier",
+                "fast_cost",
+                buy_fast,
+            ),
+            (
+                "🔥 Super Click",
+                "Multiplica ainda mais o poder total do clique.",
+                "Nível",
+                "super_level",
+                "super_cost",
+                buy_super,
+            ),
+            (
+                "🤖 Auto Clicker",
+                "Ganhas +1 moeda automaticamente por segundo.",
+                "CPS atual",
+                "cps",
+                "cps_cost",
+                buy_cps,
+            ),
+        ]
 
-        # Click Rápido
-        with st.container(border=True):
-            left, middle, right = st.columns([3, 2, 2])
-            with left:
-                st.subheader("⚡ Click Rápido")
-                st.caption("Aumenta o multiplicador dos teus cliques.")
-                st.write(f"Multiplicador atual: x{st.session_state.click_multiplier}")
-            with middle:
-                st.write("Preço")
-                st.markdown(f"### {st.session_state.fast_cost} 🪙")
-            with right:
-                st.write("")
-                st.button(
-                    "Comprar",
-                    key="buy_fast",
-                    use_container_width=True,
-                    on_click=buy_fast
-                )
+        for title, description, label, level_key, cost_key, callback in upgrades:
+            with st.container(border=True):
+                left, middle, right = st.columns([3, 1.5, 1.5])
 
-        # Super Click
-        with st.container(border=True):
-            left, middle, right = st.columns([3, 2, 2])
-            with left:
-                st.subheader("🔥 Super Click")
-                st.caption("Multiplica ainda mais o poder total do clique.")
-                st.write(f"Nível atual: {st.session_state.super_level}")
-            with middle:
-                st.write("Preço")
-                st.markdown(f"### {st.session_state.super_cost} 🪙")
-            with right:
-                st.write("")
-                st.button(
-                    "Comprar",
-                    key="buy_super",
-                    use_container_width=True,
-                    on_click=buy_super
-                )
+                with left:
+                    st.markdown(f"**{title}**")
+                    st.caption(description)
+                    st.write(
+                        f"{label}: {st.session_state[level_key]}"
+                    )
 
-        # Auto Clicker
-        with st.container(border=True):
-            left, middle, right = st.columns([3, 2, 2])
-            with left:
-                st.subheader("🤖 Auto Clicker")
-                st.caption("Ganhas +1 moeda automaticamente por segundo.")
-                st.write(f"Produção atual: {st.session_state.cps} CPS")
-            with middle:
-                st.write("Preço")
-                st.markdown(f"### {st.session_state.cps_cost} 🪙")
-            with right:
-                st.write("")
-                st.button(
-                    "Comprar",
-                    key="buy_cps",
-                    use_container_width=True,
-                    on_click=buy_cps
-                )
+                with middle:
+                    st.caption("Preço")
+                    st.markdown(
+                        f"**{st.session_state[cost_key]:,} 🪙**"
+                    )
 
-        st.divider()
-        st.info("Os preços aumentam cada vez que compras uma melhoria.")
+                with right:
+                    st.write("")
+                    st.button(
+                        "Comprar",
+                        key=f"buy_{cost_key}",
+                        use_container_width=True,
+                        on_click=callback
+                    )
+
+        st.info("Os preços aumentam a cada compra.")
 
     elif page == "🏆 Leaderboard":
-        st.title("🏆 Leaderboard")
-        st.caption("Classificação de exemplo — a tabela global será ligada a uma base de dados.")
+        st.title("🏆 Leaderboard Global")
+        st.caption("Classificação guardada na base de dados.")
 
-        # Demonstração local: não é ainda uma classificação partilhada.
-        demo_players = [
-            {"Jogador": "CoinMaster", "Moedas": 12500},
-            {"Jogador": "GoldenClick", "Moedas": 8700},
-            {"Jogador": "FastFinger", "Moedas": 4200},
-        ]
-        demo_players.append({
-            "Jogador": st.session_state.player_name,
-            "Moedas": int(st.session_state.coins)
-        })
-        demo_players.sort(key=lambda player: player["Moedas"], reverse=True)
+        if db is None:
+            st.error(
+                "Não foi possível ligar ao Supabase. "
+                "Verifica os Secrets do Streamlit."
+            )
+        else:
+            try:
+                result = (
+                    db.table("leaderboard")
+                    .select("player_name, coins, updated_at")
+                    .order("coins", desc=True)
+                    .limit(50)
+                    .execute()
+                )
 
-        for i, player in enumerate(demo_players, start=1):
-            with st.container(border=True):
-                col1, col2 = st.columns([1, 4])
-                with col1:
-                    st.subheader(f"#{i}")
-                with col2:
-                    st.write(f"**{player['Jogador']}**")
-                    st.caption(f"{player['Moedas']:,} moedas")
+                if result.data:
+                    for rank, player in enumerate(result.data, start=1):
+                        with st.container(border=True):
+                            col1, col2, col3 = st.columns([1, 3, 2])
 
-        st.warning(
-            "Esta classificação ainda é uma demonstração. "
-            "Para todos os jogadores verem a mesma tabela, "
-            "vamos ligar o jogo a uma base de dados."
-        )
+                            with col1:
+                                st.subheader(f"#{rank}")
+
+                            with col2:
+                                st.write(f"**{player['player_name']}**")
+
+                            with col3:
+                                st.write(f"{player['coins']:,} 🪙")
+                else:
+                    st.info(
+                        "Ainda não existem pontuações. "
+                        "Joga para seres o primeiro!"
+                    )
+
+            except Exception as e:
+                st.error(f"Erro ao carregar o leaderboard: {e}")
+
+            st.caption(
+                "As pontuações são partilhadas, mas ainda não "
+                "estão protegidas contra falsificação."
+            )
+
 
 show_page()
 
