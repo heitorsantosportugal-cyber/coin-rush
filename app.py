@@ -1,5 +1,13 @@
 
 import streamlit as st
+
+st.set_page_config(
+    page_title="Coin Rush",
+    page_icon="🪙",
+    layout="wide",
+    initial_sidebar_state="auto"
+)
+
 import time
 from datetime import datetime, timezone
 from supabase import create_client
