@@ -8,32 +8,49 @@ st.set_page_config(
     layout="wide"
 )
 
-# ---------- ESTILO ----------
+# ESTILO DO JOGO
 st.markdown("""
 <style>
 .stApp {
-    background: linear-gradient(135deg, #101020, #1b1740);
+    background: radial-gradient(circle at center, #25204b, #0b0b18);
     color: white;
 }
+[data-testid="stSidebar"] {
+    background: #151529;
+}
 h1, h2, h3, p, label {
-    color: white !important;
+    color: white;
+}
+.coin-area {
+    text-align: center;
+    padding: 30px 0 15px 0;
+}
+.coin {
+    font-size: 150px;
+    filter: drop-shadow(0 0 25px #facc15);
+}
+.balance {
+    text-align: center;
+    font-size: 42px;
+    font-weight: 800;
+    color: #facc15;
 }
 div.stButton > button {
-    border-radius: 12px;
+    border-radius: 14px;
+    min-height: 48px;
     font-weight: bold;
-    min-height: 45px;
 }
-.coin-button div.stButton > button {
-    background: #facc15;
-    color: #171717;
+div.stButton > button[kind="primary"] {
+    background: linear-gradient(135deg, #ffe066, #f59e0b);
+    color: #201300;
     border: none;
-    font-size: 24px;
-    min-height: 100px;
+    font-size: 22px;
+    min-height: 75px;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# ---------- ESTADO DO JOGO ----------
+# ESTADO INICIAL
 defaults = {
     "coins": 0.0,
     "click_power": 1,
@@ -47,21 +64,21 @@ for key, value in defaults.items():
     if key not in st.session_state:
         st.session_state[key] = value
 
-# ---------- MOEDAS AUTOMÁTICAS ----------
+# GANHOS AUTOMÁTICOS
 now = time.time()
-elapsed = min(now - st.session_state.last_time, 10)
+elapsed = min(now - st.session_state.last_time, 60)
 st.session_state.coins += st.session_state.cps * elapsed
 st.session_state.last_time = now
 
-# ---------- BARRA LATERAL ----------
+# LOJA LATERAL
 with st.sidebar:
-    st.title("🛒 Loja")
-    st.caption("Usa as tuas moedas para evoluir!")
+    st.title("🛒 COIN SHOP")
+    st.caption("Investe as tuas moedas!")
 
     st.divider()
-    st.subheader("👆 Poder de clique")
-    st.write(f"+{st.session_state.click_power} moedas por clique")
-    st.write(f"Custo: 🪙 {st.session_state.click_cost}")
+    st.subheader("👆 Upgrade de clique")
+    st.write(f"Atual: +{st.session_state.click_power} por clique")
+    st.write(f"Preço: 🪙 {st.session_state.click_cost}")
 
     if st.button("Comprar poder de clique", use_container_width=True):
         if st.session_state.coins >= st.session_state.click_cost:
@@ -72,12 +89,12 @@ with st.sidebar:
             )
             st.rerun()
         else:
-            st.warning("Ainda não tens moedas suficientes!")
+            st.warning("Moedas insuficientes!")
 
     st.divider()
     st.subheader("⚡ Auto-clicker")
-    st.write(f"+{st.session_state.cps} moedas por segundo")
-    st.write(f"Custo: 🪙 {st.session_state.cps_cost}")
+    st.write(f"Atual: {st.session_state.cps} CPS")
+    st.write(f"Preço: 🪙 {st.session_state.cps_cost}")
 
     if st.button("Comprar +1 CPS", use_container_width=True):
         if st.session_state.coins >= st.session_state.cps_cost:
@@ -88,7 +105,7 @@ with st.sidebar:
             )
             st.rerun()
         else:
-            st.warning("Ainda não tens moedas suficientes!")
+            st.warning("Moedas insuficientes!")
 
     st.divider()
     if st.button("🔄 Reiniciar jogo", use_container_width=True):
@@ -96,22 +113,39 @@ with st.sidebar:
             st.session_state[key] = value
         st.rerun()
 
-# ---------- ECRÃ PRINCIPAL ----------
+# ECRÃ CENTRAL
 st.title("🪙 Coin Rush")
-st.caption("Clica, acumula moedas e fica cada vez mais rico!")
+st.caption("Clica na moeda. Ganha moedas. Evolui!")
 
-st.metric("💰 Saldo", f"{st.session_state.coins:.1f} moedas")
+st.markdown(
+    f'<div class="balance">🪙 {st.session_state.coins:.1f}</div>',
+    unsafe_allow_html=True
+)
 
-col1, col2 = st.columns(2)
-col1.metric("👆 Moedas por clique", st.session_state.click_power)
-col2.metric("⚡ Moedas por segundo", st.session_state.cps)
+st.markdown(
+    '<div class="coin-area"><div class="coin">🪙</div></div>',
+    unsafe_allow_html=True
+)
+
+st.markdown(
+    f'<p style="text-align:center">+{st.session_state.click_power} moedas por clique</p>',
+    unsafe_allow_html=True
+)
+
+_, center, _ = st.columns([1, 2, 1])
+with center:
+    if st.button(
+        "🪙 CLICAR NA MOEDA",
+        type="primary",
+        use_container_width=True
+    ):
+        st.session_state.coins += st.session_state.click_power
+        st.rerun()
 
 st.write("")
+left, right = st.columns(2)
+left.metric("👆 Poder de clique", st.session_state.click_power)
+right.metric("⚡ Moedas por segundo", st.session_state.cps)
 
-st.markdown('<div class="coin-button">', unsafe_allow_html=True)
-if st.button("🪙 CLICA NA MOEDA!", use_container_width=True):
-    st.session_state.coins += st.session_state.click_power
-    st.rerun()
-st.markdown("</div>", unsafe_allow_html=True)
+st.caption("Dica: compra CPS para acumular moedas automaticamente.")
 
-st.caption("Dica: compra auto-clickers para ganhares moedas mesmo sem clicar!")
