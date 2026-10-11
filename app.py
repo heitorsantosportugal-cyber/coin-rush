@@ -102,6 +102,13 @@ def get_db():
 
 db = get_db()
 
+# Estado da conta do jogador
+if "user" not in st.session_state:
+    st.session_state.user = None
+
+if "auth_message" not in st.session_state:
+    st.session_state.auth_message = ""
+
 # ---------- STATE ----------
 defaults = {
     "coins": 0.0,
