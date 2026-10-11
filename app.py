@@ -91,16 +91,21 @@ div.st-key-coin_button button {
 """, unsafe_allow_html=True)
 
 # ---------- SUPABASE ----------
+
 @st.cache_resource
 def get_db():
     try:
         url = st.secrets["SUPABASE_URL"]
         key = st.secrets["SUPABASE_KEY"]
         return create_client(url, key)
-    except Exception:
+    except Exception as e:
+        st.error(
+            f"Erro ao ligar ao Supabase: {type(e).__name__}: {e}"
+        )
         return None
 
 db = get_db()
+
 
 # ---------- STATE ----------
 defaults = {
