@@ -249,6 +249,8 @@ page = st.sidebar.radio(
         "Rebirth",
         "Conquistas",
         "Leaderboard",
+        "God Mode"
+   
     ]
 )
 
