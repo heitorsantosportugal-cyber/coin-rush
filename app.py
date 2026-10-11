@@ -325,10 +325,37 @@ if st.sidebar.button("📝 Criar conta"):
                 "Erro no registo. Confirma os dados e tenta novamente."
             )
 
+
 if st.sidebar.button("🔑 Iniciar sessão"):
-    st.session_state.auth_message = (
-        "Formulário preparado; o login ainda não está ligado."
-    )
+    if db is None:
+        st.session_state.auth_message = "Erro: base de dados indisponível."
+    elif not auth_email or not auth_password:
+        st.session_state.auth_message = "Preenche o email e a palavra-passe."
+    else:
+        try:
+            result = db.auth.sign_in_with_password({
+                "email": auth_email.strip(),
+                "password": auth_password
+            })
+
+            if result.user and result.session:
+                st.session_state.user = {
+                    "id": result.user.id,
+                    "email": result.user.email
+                }
+                st.session_state.auth_message = (
+                    "Sessão iniciada! Bem-vindo ao Coin Rush."
+                )
+            else:
+                st.session_state.auth_message = (
+                    "Não foi possível iniciar sessão."
+                )
+        except Exception:
+            st.session_state.auth_message = (
+                "Login falhou. Confirma o email, a palavra-passe "
+                "e se já confirmaste o email."
+            )
+
 
 if st.session_state.auth_message:
     st.sidebar.info(st.session_state.auth_message)
