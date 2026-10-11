@@ -1,10 +1,10 @@
 
-
 import streamlit as st
 import time
 from datetime import datetime, timezone
 from supabase import create_client
 
+# ---------- CONFIG ----------
 st.set_page_config(
     page_title="Coin Rush",
     page_icon="🪙",
@@ -37,81 +37,77 @@ div.stButton > button:hover {
     border-color: #facc15;
     color: #facc15;
 }
-div.st-key-coin button {
+div.st-key-coin_button button {
     width: 190px !important;
-    min-width: 190px !important;
-    max-width: 190px !important;
     height: 190px !important;
-    min-height: 190px !important;
     border-radius: 50% !important;
-    padding: 0 !important;
-    margin: auto !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    background: radial-gradient(circle at 35% 25%,
-        #fff7bd, #facc15 48%, #b77908 90%) !important;
+    background: radial-gradient(
+        circle at 35% 25%,
+        #fff7bd, #facc15 48%, #b77908 90%
+    ) !important;
     border: 5px solid #ffe878 !important;
     box-shadow: 0 0 28px #eab30855,
                 inset 0 0 12px #fff6bd !important;
-    font-size: 95px !important;
-    line-height: 1 !important;
-}
-div.st-key-coin button:hover {
-    transform: scale(1.04);
-    color: white !important;
-}
-div.st-key-coin button:active {
-    transform: scale(0.94);
-}
-.small-note {
-    color: #b8b8d5;
-    text-align: center;
+    font-size: 85px !important;
 }
 </style>
 """, unsafe_allow_html=True)
 
-
 # ---------- SUPABASE ----------
 @st.cache_resource
-def get_supabase():
-    return create_client(
-        st.secrets["SUPABASE_URL"],
-        st.secrets["SUPABASE_KEY"]
-    )
+def get_db():
+    try:
+        url = st.secrets["SUPABASE_URL"]
+        key = st.secrets["SUPABASE_KEY"]
+        return create_client(url, key)
+    except Exception:
+        return None
 
-try:
-    db = get_supabase()
-    db_error = None
-except Exception as e:
-    db = None
-    db_error = str(e)
+db = get_db()
 
-
-# ---------- GAME DATA ----------
+# ---------- STATE ----------
 defaults = {
     "coins": 0.0,
     "click_power": 1,
     "click_multiplier": 1,
     "super_level": 0,
     "cps": 0,
-    "normal_cost": 25,
-    "fast_cost": 100,
-    "super_cost": 500,
-    "cps_cost": 50,
-    "last_time": time.time(),
-    "player_name": "Jogador",
+    "factory_level": 0,
+    "rebirths": 0,
     "total_clicks": 0,
+    "total_earned": 0.0,
+    "upgrades_bought": 0,
+    "achievements": [],
+    "player_name": "Player",
     "loaded_player": "",
     "last_save": 0.0,
+    "last_tick": time.time(),
+    "db_message": "",
 }
 
 for key, value in defaults.items():
     if key not in st.session_state:
         st.session_state[key] = value
 
+# ---------- GAME CALCULATIONS ----------
+def rebirth_multiplier():
+    return 2 ** st.session_state.rebirths
 
-# ---------- DATABASE FUNCTIONS ----------
+def click_value():
+    return (
+        st.session_state.click_power
+        * st.session_state.click_multiplier
+        * (1 + 5 * st.session_state.super_level)
+        * rebirth_multiplier()
+    )
+
+def total_cps():
+    return (
+        st.session_state.cps
+        + st.session_state.factory_level * 5
+    ) * rebirth_multiplier()
+
+# ---------- DATABASE ----------
 def load_player(name):
     if db is None or not name:
         return
@@ -126,19 +122,17 @@ def load_player(name):
         )
 
         if result.data:
-            saved_coins = result.data[0]["coins"]
             st.session_state.coins = max(
                 st.session_state.coins,
-                float(saved_coins)
+                float(result.data[0]["coins"])
             )
 
         st.session_state.loaded_player = name
 
     except Exception as e:
         st.session_state.db_message = (
-            f"Não foi possível carregar o jogador: {e}"
+            f"Erro ao carregar jogador: {e}"
         )
-
 
 def save_score():
     if db is None:
@@ -161,326 +155,406 @@ def save_score():
         ).execute()
 
         st.session_state.last_save = time.time()
-        st.session_state.db_message = "Pontuação sincronizada!"
+        st.session_state.db_message = (
+            "Pontuação sincronizada!"
+        )
 
     except Exception as e:
         st.session_state.db_message = (
             f"Erro ao guardar pontuação: {e}"
         )
 
+# ---------- ACHIEVEMENTS ----------
+ACHIEVEMENTS = [
+    {
+        "id": "first_click",
+        "name": "Primeiro Clique",
+        "description": "Clica na moeda pela primeira vez.",
+        "condition": lambda: st.session_state.total_clicks >= 1,
+        "reward": 25,
+    },
+    {
+        "id": "click_100",
+        "name": "Clicador",
+        "description": "Faz 100 cliques.",
+        "condition": lambda: st.session_state.total_clicks >= 100,
+        "reward": 250,
+    },
+    {
+        "id": "coins_1000",
+        "name": "Pequena Fortuna",
+        "description": "Acumula 1.000 moedas.",
+        "condition": lambda: st.session_state.total_earned >= 1000,
+        "reward": 500,
+    },
+    {
+        "id": "upgrade_10",
+        "name": "Investidor",
+        "description": "Compra 10 melhorias.",
+        "condition": lambda: st.session_state.upgrades_bought >= 10,
+        "reward": 1000,
+    },
+    {
+        "id": "first_rebirth",
+        "name": "Renascimento",
+        "description": "Faz o primeiro Rebirth.",
+        "condition": lambda: st.session_state.rebirths >= 1,
+        "reward": 2500,
+    },
+]
+
+def check_achievements():
+    for achievement in ACHIEVEMENTS:
+        if achievement["id"] in st.session_state.achievements:
+            continue
+
+        if achievement["condition"]():
+            st.session_state.achievements.append(
+                achievement["id"]
+            )
+            st.session_state.coins += achievement["reward"]
+            st.session_state.total_earned += achievement["reward"]
+            st.toast(
+                f"🏆 Conquista: {achievement['name']}! "
+                f"+{achievement['reward']} moedas"
+            )
 
 # ---------- SIDEBAR ----------
-with st.sidebar:
-    st.title("🪙 COIN RUSH")
-    st.caption("Clica. Evolui. Domina.")
+st.sidebar.title("🪙 Coin Rush")
 
-    page = st.radio(
-        "MENU",
-        ["🎮 Jogar", "🛒 Melhorias", "🏆 Leaderboard"],
-        label_visibility="collapsed"
-    )
-
-    st.divider()
-
-    
-current_name = st.session_state.player_name
-
-new_name = st.text_input(
+new_name = st.sidebar.text_input(
     "Nome do jogador",
-    value=current_name,
+    value=st.session_state.player_name,
     max_chars=20
 ).strip()
 
-if new_name and new_name != current_name:
-    if db is not None and st.session_state.loaded_player == current_name:
+if new_name and new_name != st.session_state.player_name:
+    st.session_state.player_name = new_name
+    st.session_state.loaded_player = ""
+    load_player(new_name)
+
+if (
+    st.session_state.player_name
+    and not st.session_state.loaded_player
+):
+    load_player(st.session_state.player_name)
+
+page = st.sidebar.radio(
+    "Navegação",
+    [
+        "Jogar",
+        "Melhorias",
+        "Fábrica",
+        "Rebirth",
+        "Conquistas",
+        "Leaderboard",
+    ]
+)
+
+st.sidebar.divider()
+st.sidebar.metric(
+    "Saldo",
+    f"{st.session_state.coins:,.1f} 🪙"
+)
+st.sidebar.metric(
+    "Por clique",
+    f"{click_value():,.1f} 🪙"
+)
+st.sidebar.metric(
+    "Por segundo",
+    f"{total_cps():,.1f} CPS"
+)
+st.sidebar.metric(
+    "Rebirths",
+    str(st.session_state.rebirths)
+)
+
+if db is None:
+    st.sidebar.warning(
+        "Base de dados desligada. Verifica os Secrets."
+    )
+elif st.session_state.db_message:
+    st.sidebar.caption(st.session_state.db_message)
+
+# ---------- GAME PAGE ----------
+st.title("🪙 Coin Rush")
+st.caption("Clica, melhora, constrói a tua fábrica e evolui!")
+
+@st.fragment(run_every=1)
+def game_area():
+    now = time.time()
+    elapsed = min(now - st.session_state.last_tick, 5)
+    st.session_state.last_tick = now
+
+    passive_gain = total_cps() * elapsed
+    if passive_gain > 0:
+        st.session_state.coins += passive_gain
+        st.session_state.total_earned += passive_gain
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Saldo", f"{st.session_state.coins:,.1f} 🪙")
+    col2.metric("Por clique", f"{click_value():,.1f} 🪙")
+    col3.metric("Por segundo", f"{total_cps():,.1f} CPS")
+
+    st.write("")
+    left, center, right = st.columns([1, 2, 1])
+
+    with center:
+        st.markdown(
+            "<h2 style='text-align:center'>Clica na moeda!</h2>",
+            unsafe_allow_html=True
+        )
+
+        if st.button(
+            "🪙",
+            key="coin_button",
+            use_container_width=True
+        ):
+            gain = click_value()
+            st.session_state.coins += gain
+            st.session_state.total_earned += gain
+            st.session_state.total_clicks += 1
+            check_achievements()
+            save_score()
+
+        st.caption(
+            f"Total de cliques: {st.session_state.total_clicks:,}"
+        )
+
+    if time.time() - st.session_state.last_save >= 10:
+        save_score()
+
+if page == "Jogar":
+    game_area()
+
+# ---------- UPGRADES ----------
+elif page == "Melhorias":
+    st.header("🛒 Loja de Melhorias")
+    st.write("Investe as tuas moedas para ganhares mais.")
+
+    upgrades = [
+        {
+            "name": "Click Normal",
+            "description": "+1 poder de clique",
+            "cost": 50 * (st.session_state.click_power ** 2),
+            "key": "normal",
+        },
+        {
+            "name": "Click Rápido",
+            "description": "+1 multiplicador de clique",
+            "cost": 150 * (st.session_state.click_multiplier ** 2),
+            "key": "fast",
+        },
+        {
+            "name": "Super Click",
+            "description": "Aumenta muito os ganhos por clique",
+            "cost": 500 * ((st.session_state.super_level + 1) ** 2),
+            "key": "super",
+        },
+        {
+            "name": "Auto Clicker",
+            "description": "+1 moeda automática por segundo",
+            "cost": 300 * ((st.session_state.cps + 1) ** 2),
+            "key": "auto",
+        },
+    ]
+
+    for upgrade in upgrades:
+        with st.container(border=True):
+            col1, col2 = st.columns([3, 1])
+
+            with col1:
+                st.subheader(upgrade["name"])
+                st.write(upgrade["description"])
+                st.caption(
+                    f"Custo: {upgrade['cost']:,} moedas"
+                )
+
+            with col2:
+                if st.button(
+                    "Comprar",
+                    key=f"buy_{upgrade['key']}",
+                    use_container_width=True
+                ):
+                    if st.session_state.coins >= upgrade["cost"]:
+                        st.session_state.coins -= upgrade["cost"]
+
+                        if upgrade["key"] == "normal":
+                            st.session_state.click_power += 1
+                        elif upgrade["key"] == "fast":
+                            st.session_state.click_multiplier += 1
+                        elif upgrade["key"] == "super":
+                            st.session_state.super_level += 1
+                        elif upgrade["key"] == "auto":
+                            st.session_state.cps += 1
+
+                        st.session_state.upgrades_bought += 1
+                        check_achievements()
+                        save_score()
+                        st.success("Melhoria comprada!")
+                        st.rerun()
+                    else:
+                        st.warning("Ainda não tens moedas suficientes.")
+
+# ---------- FACTORY ----------
+elif page == "Fábrica":
+    st.header("🏭 Fábrica de Moedas")
+    st.write(
+        "Cada nível da fábrica produz 5 moedas por segundo, "
+        "antes do multiplicador de Rebirth."
+    )
+
+    st.metric(
+        "Nível da fábrica",
+        st.session_state.factory_level
+    )
+    st.metric(
+        "Produção da fábrica",
+        f"{st.session_state.factory_level * 5 * rebirth_multiplier():,.1f} CPS"
+    )
+
+    factory_cost = 1000 * ((st.session_state.factory_level + 1) ** 2)
+
+    st.subheader("Comprar uma fábrica")
+    st.write(f"Custo do próximo nível: **{factory_cost:,} moedas**")
+
+    if st.button("🏭 Melhorar fábrica", use_container_width=True):
+        if st.session_state.coins >= factory_cost:
+            st.session_state.coins -= factory_cost
+            st.session_state.factory_level += 1
+            st.session_state.upgrades_bought += 1
+            check_achievements()
+            save_score()
+            st.success("A fábrica foi melhorada!")
+            st.rerun()
+        else:
+            st.warning("Ainda não tens moedas suficientes.")
+
+# ---------- REBIRTH ----------
+elif page == "Rebirth":
+    st.header("♻️ Rebirth")
+    st.write(
+        "Recomeça a tua aventura em troca de um multiplicador "
+        "permanente de ganhos."
+    )
+
+    required_coins = 100_000 * (st.session_state.rebirths + 1)
+    next_multiplier = 2 ** (st.session_state.rebirths + 1)
+
+    st.metric("Rebirths feitos", st.session_state.rebirths)
+    st.metric("Multiplicador atual", f"x{rebirth_multiplier()}")
+    st.metric("Próximo multiplicador", f"x{next_multiplier}")
+    st.metric("Moedas necessárias", f"{required_coins:,} 🪙")
+
+    st.warning(
+        "O Rebirth reinicia o saldo, os cliques melhorados, "
+        "o Auto Clicker e a fábrica. O número de Rebirths "
+        "e o multiplicador permanente ficam contigo."
+    )
+
+    if st.button("♻️ Fazer Rebirth", use_container_width=True):
+        if st.session_state.coins >= required_coins:
+            st.session_state.rebirths += 1
+            st.session_state.coins = 0.0
+            st.session_state.click_power = 1
+            st.session_state.click_multiplier = 1
+            st.session_state.super_level = 0
+            st.session_state.cps = 0
+            st.session_state.factory_level = 0
+            st.session_state.last_tick = time.time()
+            save_score()
+            st.success("Rebirth concluído! O teu multiplicador aumentou.")
+            st.rerun()
+        else:
+            st.warning(
+                f"Precisas de mais "
+                f"{required_coins - st.session_state.coins:,.1f} moedas."
+            )
+
+# ---------- ACHIEVEMENTS PAGE ----------
+elif page == "Conquistas":
+    st.header("🏆 Conquistas e Missões")
+    st.write(
+        "Completa objetivos para desbloqueares recompensas."
+    )
+
+    completed = len(st.session_state.achievements)
+    st.progress(completed / len(ACHIEVEMENTS))
+    st.write(f"Conquistas desbloqueadas: {completed}/{len(ACHIEVEMENTS)}")
+
+    for achievement in ACHIEVEMENTS:
+        is_done = achievement["id"] in st.session_state.achievements
+
+        with st.container(border=True):
+            col1, col2 = st.columns([4, 1])
+
+            with col1:
+                st.subheader(
+                    ("✅ " if is_done else "🔒 ")
+                    + achievement["name"]
+                )
+                st.write(achievement["description"])
+                st.caption(
+                    f"Recompensa: {achievement['reward']:,} moedas"
+                )
+
+            with col2:
+                st.write("Concluída" if is_done else "Por fazer")
+
+    st.divider()
+    st.subheader("📋 Missões atuais")
+
+    missions = [
+        ("Fazer 10 cliques", st.session_state.total_clicks, 10),
+        ("Fazer 100 cliques", st.session_state.total_clicks, 100),
+        ("Comprar 5 melhorias", st.session_state.upgrades_bought, 5),
+        ("Chegar a 10 CPS", total_cps(), 10),
+    ]
+
+    for label, progress, target in missions:
+        st.write(f"**{label}** — {min(progress, target):,.0f}/{target}")
+        st.progress(min(float(progress) / target, 1.0))
+
+# ---------- LEADERBOARD ----------
+elif page == "Leaderboard":
+    st.header("🏆 Leaderboard Global")
+    st.write("As pontuações são carregadas da base de dados partilhada.")
+
+    if db is None:
+        st.error("Não foi possível ligar ao Supabase. Verifica os Secrets.")
+    else:
         try:
-            existing = (
+            result = (
                 db.table("leaderboard")
-                .select("player_name")
-                .eq("player_name", new_name)
-                .limit(1)
+                .select("player_name, coins, updated_at")
+                .order("coins", desc=True)
+                .limit(50)
                 .execute()
             )
 
-            if existing.data:
-                st.warning(
-                    "Esse nome já pertence a um jogador. "
-                    "Escolhe outro nome."
-                )
-            else:
-                db.table("leaderboard").update({
-                    "player_name": new_name,
-                    "coins": int(st.session_state.coins),
-                    "updated_at": datetime.now(
-                        timezone.utc
-                    ).isoformat(),
-                }).eq(
-                    "player_name", current_name
-                ).execute()
+            if result.data:
+                for index, player in enumerate(result.data, start=1):
+                    medal = (
+                        "🥇" if index == 1
+                        else "🥈" if index == 2
+                        else "🥉" if index == 3
+                        else f"**{index}.**"
+                    )
 
-                st.session_state.player_name = new_name
-                st.session_state.loaded_player = new_name
+                    col1, col2 = st.columns([3, 1])
+                    col1.write(f"{medal} {player['player_name']}")
+                    col2.write(f"{player['coins']:,} 🪙")
+            else:
+                st.info("Ainda não existem pontuações guardadas.")
 
         except Exception as e:
-            st.error(f"Erro ao alterar o nome: {e}")
-    else:
-        st.session_state.player_name = new_name
+            st.error(f"Erro ao carregar o leaderboard: {e}")
 
-
-    st.metric("Saldo", f"{st.session_state.coins:,.1f} 🪙")
-
-    click_value = (
-        st.session_state.click_power
-        * st.session_state.click_multiplier
-        * (1 + 5 * st.session_state.super_level)
+    st.caption(
+        "Nota: esta versão de teste ainda não tem autenticação "
+        "nem proteção completa contra pontuações falsas."
     )
 
-    st.metric("Ganhos por clique", f"{click_value} 🪙")
-    st.metric("Ganhos automáticos", f"{st.session_state.cps} CPS")
-
-    if db is None:
-        st.warning("Base de dados não ligada. Verifica os Secrets.")
-
-
-# ---------- UPGRADE FUNCTIONS ----------
-def buy_upgrade(cost_key, multiplier, apply_upgrade):
-    price = st.session_state[cost_key]
-
-    if st.session_state.coins < price:
-        st.warning("Ainda não tens moedas suficientes!")
-        return
-
-    st.session_state.coins -= price
-    apply_upgrade()
-    st.session_state[cost_key] = int(price * multiplier)
-
-    save_score()
-    st.toast("Melhoria comprada! 🚀")
-
-
-def buy_normal():
-    buy_upgrade(
-        "normal_cost",
-        1.6,
-        lambda: setattr(
-            st.session_state,
-            "click_power",
-            st.session_state.click_power + 1
-        )
-    )
-
-
-def buy_fast():
-    buy_upgrade(
-        "fast_cost",
-        1.8,
-        lambda: setattr(
-            st.session_state,
-            "click_multiplier",
-            st.session_state.click_multiplier + 1
-        )
-    )
-
-
-def buy_super():
-    buy_upgrade(
-        "super_cost",
-        2.0,
-        lambda: setattr(
-            st.session_state,
-            "super_level",
-            st.session_state.super_level + 1
-        )
-    )
-
-
-def buy_cps():
-    buy_upgrade(
-        "cps_cost",
-        1.7,
-        lambda: setattr(
-            st.session_state,
-            "cps",
-            st.session_state.cps + 1
-        )
-    )
-
-
-# ---------- MAIN GAME ----------
-@st.fragment(run_every=1)
-def show_page():
-    now = time.time()
-    elapsed = min(now - st.session_state.last_time, 10)
-
-    st.session_state.coins += st.session_state.cps * elapsed
-    st.session_state.last_time = now
-
-    click_value = (
-        st.session_state.click_power
-        * st.session_state.click_multiplier
-        * (1 + 5 * st.session_state.super_level)
-    )
-
-    # Guardar periodicamente os ganhos automáticos.
-    if now - st.session_state.last_save >= 10:
-        save_score()
-
-    if page == "🎮 Jogar":
-        st.title("🪙 COIN RUSH")
-        st.caption("A tua jornada para te tornares o maior colecionador!")
-
-        st.write("")
-        left, center, right = st.columns([1, 2, 1])
-
-        with center:
-            st.markdown(
-                f"<h1 style='text-align:center;color:#facc15;"
-                f"font-size:38px'>{st.session_state.coins:,.1f} 🪙</h1>",
-                unsafe_allow_html=True
-            )
-
-            st.markdown(
-                f"<p style='text-align:center'>"
-                f"+{click_value} moedas por clique</p>",
-                unsafe_allow_html=True
-            )
-
-            _, coin_col, _ = st.columns([0.5, 2, 0.5])
-
-            with coin_col:
-                if st.button("🪙", key="coin"):
-                    st.session_state.coins += click_value
-                    st.session_state.total_clicks += 1
-                    save_score()
-
-            st.markdown(
-                "<p class='small-note'>"
-                "Clica na moeda para ganhar moedas!</p>",
-                unsafe_allow_html=True
-            )
-
-        st.divider()
-        a, b, c = st.columns(3)
-        a.metric("👆 Poder base", st.session_state.click_power)
-        b.metric("⚡ Multiplicador", f"x{st.session_state.click_multiplier}")
-        c.metric("🤖 CPS", st.session_state.cps)
-
-    elif page == "🛒 Melhorias":
-        st.title("🛒 Loja de Melhorias")
-        st.caption("Investe as tuas moedas para ganhares cada vez mais.")
-        st.divider()
-
-        upgrades = [
-            (
-                "👆 Click Normal",
-                "Aumenta em +1 o poder base de cada clique.",
-                "Nível",
-                "click_power",
-                "normal_cost",
-                buy_normal,
-            ),
-            (
-                "⚡ Click Rápido",
-                "Aumenta o multiplicador dos teus cliques.",
-                "Multiplicador",
-                "click_multiplier",
-                "fast_cost",
-                buy_fast,
-            ),
-            (
-                "🔥 Super Click",
-                "Multiplica ainda mais o poder total do clique.",
-                "Nível",
-                "super_level",
-                "super_cost",
-                buy_super,
-            ),
-            (
-                "🤖 Auto Clicker",
-                "Ganhas +1 moeda automaticamente por segundo.",
-                "CPS atual",
-                "cps",
-                "cps_cost",
-                buy_cps,
-            ),
-        ]
-
-        for title, description, label, level_key, cost_key, callback in upgrades:
-            with st.container(border=True):
-                left, middle, right = st.columns([3, 1.5, 1.5])
-
-                with left:
-                    st.markdown(f"**{title}**")
-                    st.caption(description)
-                    st.write(
-                        f"{label}: {st.session_state[level_key]}"
-                    )
-
-                with middle:
-                    st.caption("Preço")
-                    st.markdown(
-                        f"**{st.session_state[cost_key]:,} 🪙**"
-                    )
-
-                with right:
-                    st.write("")
-                    st.button(
-                        "Comprar",
-                        key=f"buy_{cost_key}",
-                        use_container_width=True,
-                        on_click=callback
-                    )
-
-        st.info("Os preços aumentam a cada compra.")
-
-    elif page == "🏆 Leaderboard":
-        st.title("🏆 Leaderboard Global")
-        st.caption("Classificação guardada na base de dados.")
-
-        if db is None:
-            st.error(
-                "Não foi possível ligar ao Supabase. "
-                "Verifica os Secrets do Streamlit."
-            )
-        else:
-            try:
-                result = (
-                    db.table("leaderboard")
-                    .select("player_name, coins, updated_at")
-                    .order("coins", desc=True)
-                    .limit(50)
-                    .execute()
-                )
-
-                if result.data:
-                    for rank, player in enumerate(result.data, start=1):
-                        with st.container(border=True):
-                            col1, col2, col3 = st.columns([1, 3, 2])
-
-                            with col1:
-                                st.subheader(f"#{rank}")
-
-                            with col2:
-                                st.write(f"**{player['player_name']}**")
-
-                            with col3:
-                                st.write(f"{player['coins']:,} 🪙")
-                else:
-                    st.info(
-                        "Ainda não existem pontuações. "
-                        "Joga para seres o primeiro!"
-                    )
-
-            except Exception as e:
-                st.error(f"Erro ao carregar o leaderboard: {e}")
-
-            st.caption(
-                "As pontuações são partilhadas, mas ainda não "
-                "estão protegidas contra falsificação."
-            )
-
-
-show_page()
-
+# ---------- FOOTER ----------
 st.divider()
-st.caption("Coin Rush • Continua a evoluir! 🪙")
+st.caption("Coin Rush • Update 2.0 • Feito com Python + Streamlit")
