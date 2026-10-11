@@ -299,10 +299,31 @@ auth_password = st.sidebar.text_input(
     key="auth_password"
 )
 
+
 if st.sidebar.button("📝 Criar conta"):
-    st.session_state.auth_message = (
-        "Formulário preparado; a criação da conta ainda não está ligada."
-    )
+    if db is None:
+        st.session_state.auth_message = "Erro: base de dados indisponível."
+    elif not auth_email or not auth_password:
+        st.session_state.auth_message = "Preenche o email e a palavra-passe."
+    else:
+        try:
+            result = db.auth.sign_up({
+                "email": auth_email.strip(),
+                "password": auth_password
+            })
+
+            if result.user:
+                st.session_state.auth_message = (
+                    "Registo enviado! Verifica o teu email para confirmar a conta."
+                )
+            else:
+                st.session_state.auth_message = (
+                    "Não foi possível concluir o registo. Tenta novamente."
+                )
+        except Exception:
+            st.session_state.auth_message = (
+                "Erro no registo. Confirma os dados e tenta novamente."
+            )
 
 if st.sidebar.button("🔑 Iniciar sessão"):
     st.session_state.auth_message = (
