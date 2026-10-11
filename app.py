@@ -332,10 +332,17 @@ def game_area():
         st.session_state.coins += passive_gain
         st.session_state.total_earned += passive_gain
 
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Saldo", f"{st.session_state.coins:,.1f} 🪙")
-    col2.metric("Por clique", f"{click_value():,.1f} 🪙")
-    col3.metric("Por segundo", f"{total_cps():,.1f} CPS")
+    
+col1, col2, col3 = st.columns(3, gap="small")
+
+with col1:
+    st.metric("Saldo", f"{st.session_state.coins:,.1f} 🪙")
+
+with col2:
+    st.metric("Por clique", f"{click_value():,.1f} 🪙")
+
+with col3:
+    st.metric("Por segundo", f"{total_cps():,.1f} CPS")
 
     st.write("")
     left, center, right = st.columns([1, 2, 1])
