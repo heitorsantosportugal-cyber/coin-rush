@@ -78,6 +78,7 @@ defaults = {
     "total_earned": 0.0,
     "upgrades_bought": 0,
     "achievements": [],
+    "god_mode_unlocked": False,
     "player_name": "Player",
     "loaded_player": "",
     "last_save": 0.0,
