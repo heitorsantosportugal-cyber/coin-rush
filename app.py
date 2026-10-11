@@ -629,14 +629,13 @@ elif page == "God Mode":
 
         st.subheader("💰 Gerador de moedas")
 
-        quantidade = st.number_input(
-            "Quantas moedas queres adicionar?",
-            min_value=1,
-            max_value=10**100,
-            value=5_000_000_000_000,
-            step=1_000_000,
-            format="%d",
-        )
+        
+quantidade_texto = st.text_input(
+    "Quantas moedas queres adicionar?",
+    value="5000000000000",
+    help="Escreve a quantidade de moedas que queres receber."
+)
+
 
         st.write(f"Vais adicionar **{quantidade:,} moedas**.")
 
