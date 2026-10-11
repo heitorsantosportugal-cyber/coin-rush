@@ -284,6 +284,34 @@ if (
 ):
     load_player(st.session_state.player_name)
 
+# Sistema de contas
+st.sidebar.divider()
+st.sidebar.subheader("🔐 Conta Coin Rush")
+
+auth_email = st.sidebar.text_input(
+    "Email",
+    key="auth_email"
+)
+
+auth_password = st.sidebar.text_input(
+    "Palavra-passe",
+    type="password",
+    key="auth_password"
+)
+
+if st.sidebar.button("📝 Criar conta"):
+    st.session_state.auth_message = (
+        "Formulário preparado; a criação da conta ainda não está ligada."
+    )
+
+if st.sidebar.button("🔑 Iniciar sessão"):
+    st.session_state.auth_message = (
+        "Formulário preparado; o login ainda não está ligado."
+    )
+
+if st.session_state.auth_message:
+    st.sidebar.info(st.session_state.auth_message)
+
 page = st.sidebar.radio(
     "Navegação",
     [
