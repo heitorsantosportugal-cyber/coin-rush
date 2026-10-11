@@ -593,6 +593,55 @@ elif page == "God Mode":
             st.session_state.god_mode_unlocked = False
             st.rerun()
 
+elif page == "Enviar Moedas":
+    st.header("🎁 Enviar Moedas")
+    st.write("Transfere moedas para outro jogador do Coin Rush.")
+
+    if db is None:
+        st.error("Não foi possível ligar ao Supabase.")
+    else:
+        try:
+            result = (
+                db.table("leaderboard")
+                .select("player_name, coins")
+                .order("player_name")
+                .execute()
+            )
+
+            players = [
+                player["player_name"]
+                for player in (result.data or [])
+                if player["player_name"] != st.session_state.player_name
+            ]
+
+            if not players:
+                st.info("Ainda não existem outros jogadores disponíveis.")
+            else:
+                recipient = st.selectbox(
+                    "Escolhe o destinatário",
+                    players,
+                )
+
+                amount = st.number_input(
+                    "Quantidade de moedas",
+                    min_value=1,
+                    step=1,
+                )
+
+                st.write(
+                    f"**O teu saldo atual:** "
+                    f"{int(st.session_state.coins):,} 🪙"
+                )
+
+                if st.button("🎁 Enviar moedas"):
+                    st.info(
+                        "Formulário preparado! Falta implementar a "
+                        "transferência segura na base de dados."
+                    )
+
+        except Exception as e:
+            st.error(f"Erro ao carregar jogadores: {e}")
+
 # ---------- FOOTER ----------
 st.divider()
 st.caption("Coin Rush • Update 2.0 • Feito com Python + Streamlit")
