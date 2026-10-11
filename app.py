@@ -39,6 +39,23 @@ div.st-key-coin button:hover {
     color: white;
 }
 div.st-key-coin button:active {
+    div.st-key-coin button {
+    width: 150px;
+    height: 150px;
+    min-width: 150px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%,
+        #fff2a6, #facc15 45%, #b77908 85%);
+    border: 5px solid #ffe878;
+    box-shadow: 0 0 25px #eab30888,
+                inset 0 0 12px #fff6bd;
+    font-size: 90px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: auto;
+}
     transform: scale(0.94);
 }
 </style>
