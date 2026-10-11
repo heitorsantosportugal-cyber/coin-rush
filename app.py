@@ -603,6 +603,7 @@ elif page == "Leaderboard":
         "nem proteção completa contra pontuações falsas."
     )
 
+
 elif page == "God Mode":
     st.header("👑 God Mode")
     st.write("Área de administrador do Coin Rush.")
@@ -626,12 +627,34 @@ elif page == "God Mode":
     else:
         st.success("👑 Acesso de administrador ativo!")
 
-        if st.button("💰 Adicionar 5 000 000 000 000 moedas"):
-            st.session_state.coins += 5_000_000_000_000
-            st.session_state.total_earned += 5_000_000_000_000
-            save_score()
-            st.success("Moedas adicionadas!")
-            st.rerun()
+        st.subheader("💰 Gerador de moedas")
+
+        quantidade = st.number_input(
+            "Quantas moedas queres adicionar?",
+            min_value=1,
+            max_value=10**100,
+            value=5_000_000_000_000,
+            step=1_000_000,
+            format="%d",
+        )
+
+        st.write(f"Vais adicionar **{quantidade:,} moedas**.")
+
+        confirmar = st.checkbox(
+            "Confirmo que quero adicionar esta quantidade."
+        )
+
+        if st.button("💸 ADICIONAR MOEDAS", type="primary):
+            if confirmar:
+                st.session_state.coins += quantidade
+                st.session_state.total_earned += quantidade
+                save_score()
+                st.success(
+                    f"Foram adicionadas {quantidade:,} moedas!"
+                )
+                st.rerun()
+            else:
+                st.warning("Confirma a operação primeiro.")
 
         if st.button("🔒 Bloquear God Mode"):
             st.session_state.god_mode_unlocked = False
