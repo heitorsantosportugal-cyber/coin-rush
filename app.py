@@ -12,6 +12,35 @@ import time
 from datetime import datetime, timezone
 from supabase import create_client
 
+st.markdown("""
+<style>
+/* Adaptar o jogo a ecrãs pequenos */
+@media (max-width: 768px) {
+    .block-container {
+        padding: 1rem 0.7rem 3rem 0.7rem;
+    }
+
+    h1 {
+        font-size: 1.8rem !important;
+    }
+
+    h2 {
+        font-size: 1.4rem !important;
+    }
+
+    div.stButton > button {
+        width: 100%;
+        min-height: 48px;
+        font-size: 1rem;
+    }
+
+    [data-testid="stSidebar"] {
+        min-width: 0;
+    }
+}
+</style>
+""", unsafe_allow_html=True)
+
 # ---------- CONFIG ----------
 st.set_page_config(
     page_title="Coin Rush",
