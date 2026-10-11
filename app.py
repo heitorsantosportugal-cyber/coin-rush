@@ -630,30 +630,37 @@ elif page == "God Mode":
         st.subheader("💰 Gerador de moedas")
 
         
-quantidade_texto = st.text_input(
-    "Quantas moedas queres adicionar?",
-    value="5000000000000",
-    help="Escreve a quantidade de moedas que queres receber."
-)
 
-
-        st.write(f"Vais adicionar **{quantidade:,} moedas**.")
+        quantidade_texto = st.text_input(
+            "Quantas moedas queres adicionar?",
+            value="5000000000000",
+            help="Escreve a quantidade de moedas que queres receber."
+        )
 
         confirmar = st.checkbox(
             "Confirmo que quero adicionar esta quantidade."
         )
 
         if st.button("💸 ADICIONAR MOEDAS", type="primary"):
-            if confirmar:
-                st.session_state.coins += quantidade
-                st.session_state.total_earned += quantidade
-                save_score()
-                st.success(
-                    f"Foram adicionadas {quantidade:,} moedas!"
-                )
-                st.rerun()
-            else:
-                st.warning("Confirma a operação primeiro.")
+            try:
+                quantidade = int(quantidade_texto.strip())
+
+                if quantidade <= 0:
+                    st.error("Introduz um número maior que zero.")
+                elif not confirmar:
+                    st.warning("Confirma a operação primeiro.")
+                else:
+                    st.session_state.coins += quantidade
+                    st.session_state.total_earned += quantidade
+                    save_score()
+                    st.success(
+                        f"Adicionadas {quantidade:,} moedas!"
+                    )
+                    st.rerun()
+
+            except ValueError:
+                st.error("Introduz um número inteiro válido.")
+
 
         if st.button("🔒 Bloquear God Mode"):
             st.session_state.god_mode_unlocked = False
