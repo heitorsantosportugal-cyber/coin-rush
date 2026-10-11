@@ -558,6 +558,40 @@ elif page == "Leaderboard":
         "nem proteção completa contra pontuações falsas."
     )
 
+elif page == "God Mode":
+    st.header("👑 God Mode")
+    st.write("Área de administrador do Coin Rush.")
+
+    if not st.session_state.god_mode_unlocked:
+        password = st.text_input(
+            "Código secreto de administrador",
+            type="password",
+        )
+
+        if st.button("🔓 Desbloquear God Mode"):
+            if password and password == st.secrets.get(
+                "GOD_MODE_PASSWORD", ""
+            ):
+                st.session_state.god_mode_unlocked = True
+                st.success("God Mode desbloqueado!")
+                st.rerun()
+            else:
+                st.error("Código incorreto.")
+
+    else:
+        st.success("👑 Acesso de administrador ativo!")
+
+        if st.button("💰 Adicionar 5 000 000 000 000 moedas"):
+            st.session_state.coins += 5_000_000_000_000
+            st.session_state.total_earned += 5_000_000_000_000
+            save_score()
+            st.success("Moedas adicionadas!")
+            st.rerun()
+
+        if st.button("🔒 Bloquear God Mode"):
+            st.session_state.god_mode_unlocked = False
+            st.rerun()
+
 # ---------- FOOTER ----------
 st.divider()
 st.caption("Coin Rush • Update 2.0 • Feito com Python + Streamlit")
